@@ -1,0 +1,31 @@
+display_information:
+  name: PersonalCopilotTemplate
+  description: 私人研讨参与助手 — 解释 channel/thread 里的内容
+features:
+  bot_user:
+    display_name: PersonalCopilotTemplate
+    always_online: true
+  app_home:
+    messages_tab_enabled: true
+    messages_tab_read_only_enabled: false
+oauth_config:
+  scopes:
+    bot:
+      - app_mentions:read
+      - chat:write
+      - channels:read
+      - channels:history
+      - groups:read
+      - groups:history
+      - im:history
+      - im:write
+      - users:read
+settings:
+  event_subscriptions:
+    bot_events:
+      - app_mention
+      - message.channels
+      - message.groups
+      - message.im
+  socket_mode_enabled: true
+  org_deploy_enabled: false
