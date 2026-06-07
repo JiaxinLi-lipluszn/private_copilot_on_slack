@@ -15,6 +15,7 @@ Every participant should create their own Slack app:
 - one bot display name per person
 - one pair of Slack tokens per person
 - one `COPILOT_OWNER_USER_ID` per person
+- optional seminar host bot IDs for trusted bot-to-bot communication
 - one local `watch/` folder per running copy
 
 For example, Jiaxin might run `JiaxinCopilot`, Alice might run `AliceCopilot`,
@@ -44,9 +45,21 @@ COPILOT_OWNER_USER_ID=U...
 It refuses to start without a real Slack member ID. Display names such as
 `LiGaZn`, `alice`, or `Bob Smith` are not enough.
 
+Optionally, it can also answer the seminar host bot:
+
+```bash
+COPILOT_ALLOWED_SEMINAR_BOT_IDS=U123SEMINARBOT,B123SEMINARBOT
+```
+
+Only the configured owner and the configured seminar host bot can trigger an
+answer. Other humans and other bots, including other participants' private
+copilots, are ignored. This prevents private copilot-to-copilot loops while
+still allowing the public seminar host to coordinate with a participant's
+private assistant.
+
 The bot still watches channel messages after it is invited, because it needs
-seminar context. But it only answers the configured owner. DM content is not
-written to `watch/`.
+seminar context. But it only answers the configured owner or explicitly trusted
+seminar bot IDs. DM content is not written to `watch/`.
 
 ## Prerequisites
 
@@ -110,7 +123,29 @@ COPILOT_OWNER_USER_ID=U0B8Q1X1SF8
 
 Use the member ID, not your display name.
 
-## 4. Generate A Slack Manifest
+## 4. Optionally Trust The Seminar Bot
+
+If your seminar uses a public host bot, you can allow that bot to talk to your
+private copilot. Add the seminar bot's Slack ID to `.env`:
+
+```bash
+COPILOT_ALLOWED_SEMINAR_BOT_IDS=U123SEMINARBOT
+```
+
+The value can be any stable Slack ID for the seminar bot:
+
+- bot user ID: `U...` or `W...`
+- bot ID: `B...`
+- app ID: `A...`
+
+The easiest value is usually the seminar bot's bot user ID. In Slack, open the
+seminar bot profile and copy its member ID if your workspace exposes that
+option.
+
+Do not add another participant's private copilot here. This field is only for
+the public seminar host bot.
+
+## 5. Generate A Slack Manifest
 
 Load your local `.env` and generate a personalized manifest:
 
@@ -122,7 +157,7 @@ python3 generate_manifest.py
 This writes `generated_manifest.yaml`. It is ignored by git because every user
 should generate their own.
 
-## 5. Create Your Slack App
+## 6. Create Your Slack App
 
 1. Open [api.slack.com/apps](https://api.slack.com/apps).
 2. Click **Create New App**.
@@ -131,7 +166,7 @@ should generate their own.
 5. Paste the full contents of `generated_manifest.yaml`.
 6. Create the app.
 
-## 6. Create Slack Tokens
+## 7. Create Slack Tokens
 
 Create the app-level Socket Mode token:
 
@@ -160,11 +195,12 @@ Your `.env` should now contain at least:
 COPILOT_SLACK_BOT_TOKEN=xoxb-...
 COPILOT_SLACK_APP_TOKEN=xapp-...
 COPILOT_OWNER_USER_ID=U...
+COPILOT_ALLOWED_SEMINAR_BOT_IDS=
 COPILOT_APP_NAME=YourNameCopilot
 COPILOT_BOT_DISPLAY_NAME=YourNameCopilot
 ```
 
-## 7. Run Your Private Copilot
+## 8. Run Your Private Copilot
 
 ```bash
 set -a && source .env && set +a
@@ -183,7 +219,7 @@ Invite it to a Slack channel:
 /invite @YourNameCopilot
 ```
 
-## 8. Try It
+## 9. Try It
 
 Mention it at the channel top level:
 
@@ -222,8 +258,18 @@ If startup says the owner value looks like a display name, replace it with the
 Slack member ID copied from your profile. The value should look like `U...` or
 `W...`, not `LiGaZn`.
 
+If startup says `COPILOT_ALLOWED_SEMINAR_BOT_IDS` contains an invalid value,
+replace names such as `SeminarBot` with a Slack ID: `U...`, `W...`, `B...`, or
+`A...`.
+
 If the bot ignores you, the most common cause is that `COPILOT_OWNER_USER_ID`
 does not match the Slack account sending the message.
+
+If the seminar bot mentions your copilot but gets no response, add the seminar
+bot's Slack ID to `COPILOT_ALLOWED_SEMINAR_BOT_IDS` and restart this app.
+
+If another participant's copilot mentions your copilot and gets ignored, that is
+expected.
 
 If the bot cannot see a channel or thread, invite it to that channel and confirm
 the app was installed with the manifest scopes.
@@ -236,7 +282,8 @@ Slack app manifest.
 
 - It only sees messages after it has joined a channel; it does not backfill history.
 - It can read only channels it has been invited to and has permission to access.
-- It answers only `COPILOT_OWNER_USER_ID`.
+- It answers only `COPILOT_OWNER_USER_ID` and optional trusted seminar bot IDs.
+- It ignores other users' private copilot bots.
 - It uses local `codex exec`; it does not require an OpenAI/Anthropic API key.
 - `watch/`, `.env`, `.venv/`, and generated manifests are ignored by git.
 

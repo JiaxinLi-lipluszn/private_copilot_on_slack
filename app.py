@@ -16,6 +16,11 @@ import store
 app = App(token=os.environ["COPILOT_SLACK_BOT_TOKEN"], token_verification_enabled=False)
 
 OWNER_USER_ID = os.environ.get("COPILOT_OWNER_USER_ID", "").strip()
+ALLOWED_SEMINAR_BOT_IDS = {
+    item.strip()
+    for item in os.environ.get("COPILOT_ALLOWED_SEMINAR_BOT_IDS", "").replace(";", ",").split(",")
+    if item.strip()
+}
 RECENT_CONTEXT_LIMIT = int(os.environ.get("COPILOT_RECENT_CONTEXT_MESSAGES", "50") or "50")
 THREAD_CONTEXT_LIMIT = int(os.environ.get("COPILOT_THREAD_CONTEXT_MESSAGES", "80") or "80")
 CONTEXT_CHAR_LIMIT = int(os.environ.get("COPILOT_CONTEXT_CHARS", "16000") or "16000")
@@ -25,6 +30,7 @@ _NAME_CACHE = {}
 _PERMALINK_RE = re.compile(r"https?://[^>\s]+/archives/([A-Z0-9]+)/p(\d{10})(\d{6})(?:[?][^>\s]*)?")
 _GREET = re.compile(r"^\s*(hi|hello|hey|在吗|你在吗|help|帮助|怎么用)\s*$", re.I)
 _SLACK_HUMAN_ID = re.compile(r"^[UW][A-Z0-9]+$")
+_SLACK_ACTOR_ID = re.compile(r"^[ABUW][A-Z0-9]+$")
 
 
 def _team_id(event: dict, body: dict = None) -> str:
@@ -104,6 +110,38 @@ def _is_own_message(client, event: dict) -> bool:
 
 def _is_owner(event: dict) -> bool:
     return bool(OWNER_USER_ID and event.get("user") == OWNER_USER_ID)
+
+
+def _event_actor_ids(event: dict) -> set[str]:
+    ids = {
+        event.get("user", ""),
+        event.get("bot_id", ""),
+        event.get("app_id", ""),
+    }
+    profile = event.get("bot_profile") or {}
+    ids.update({
+        profile.get("id", ""),
+        profile.get("app_id", ""),
+    })
+    return {item for item in ids if item}
+
+
+def _is_bot_actor(event: dict) -> bool:
+    return bool(event.get("bot_id") or event.get("bot_profile") or event.get("subtype") == "bot_message")
+
+
+def _is_allowed_seminar_bot(event: dict) -> bool:
+    return bool(ALLOWED_SEMINAR_BOT_IDS and _event_actor_ids(event) & ALLOWED_SEMINAR_BOT_IDS)
+
+
+def _allowed_request_actor(event: dict) -> tuple[bool, str]:
+    if _is_owner(event):
+        return True, "owner"
+    if _is_allowed_seminar_bot(event):
+        return True, "seminar_bot"
+    if _is_bot_actor(event):
+        return False, "untrusted_bot"
+    return False, "non_owner"
 
 
 def _parse_permalink(text: str) -> tuple[str, str]:
@@ -259,8 +297,13 @@ def handle_app_mention(event, body, client, logger):
     if subtype in {"message_deleted", "message_changed"} or _is_own_message(client, event):
         return
     _record_channel_message(event, body, client, logger, source="app_mention")
-    if not _is_owner(event):
-        logger.info("ignore app mention from non-owner user=%s", event.get("user", ""))
+    allowed, reason = _allowed_request_actor(event)
+    if not allowed:
+        logger.info(
+            "ignore app mention reason=%s actor_ids=%s",
+            reason,
+            ",".join(sorted(_event_actor_ids(event))),
+        )
         return
     _answer_request(event, body, client, logger)
 
@@ -271,10 +314,15 @@ def handle_message(event, body, client, logger):
     if subtype in {"message_deleted", "message_changed", "channel_join", "channel_leave"}:
         return
     if event.get("channel_type") == "im":
-        if event.get("bot_id") or _is_own_message(client, event):
+        if _is_own_message(client, event):
             return
-        if not _is_owner(event):
-            logger.info("ignore DM from non-owner user=%s", event.get("user", ""))
+        allowed, reason = _allowed_request_actor(event)
+        if not allowed:
+            logger.info(
+                "ignore DM reason=%s actor_ids=%s",
+                reason,
+                ",".join(sorted(_event_actor_ids(event))),
+            )
             return
         _answer_request(event, body, client, logger, is_dm=True)
         return
@@ -288,6 +336,13 @@ if __name__ == "__main__":
         raise RuntimeError(
             "COPILOT_OWNER_USER_ID 必须是 Slack member ID,不是显示名。"
             "请在 Slack 个人资料里点 More -> Copy member ID,填入类似 U0B8Q1X1SF8 的值。"
+        )
+    invalid_seminar_bot_ids = [item for item in sorted(ALLOWED_SEMINAR_BOT_IDS) if not _SLACK_ACTOR_ID.fullmatch(item)]
+    if invalid_seminar_bot_ids:
+        raise RuntimeError(
+            "COPILOT_ALLOWED_SEMINAR_BOT_IDS 只能包含 Slack ID,不是显示名。"
+            "可填 seminar bot 的 bot user ID(U.../W...),bot ID(B...),或 app ID(A...)。"
+            f" 当前无法识别: {', '.join(invalid_seminar_bot_ids)}"
         )
     print("Private Seminar Copilot 已启动(Socket Mode)。Ctrl-C 退出。", flush=True)
     SocketModeHandler(app, os.environ["COPILOT_SLACK_APP_TOKEN"]).start()
