@@ -24,6 +24,7 @@ _BOT_USER_ID = ""
 _NAME_CACHE = {}
 _PERMALINK_RE = re.compile(r"https?://[^>\s]+/archives/([A-Z0-9]+)/p(\d{10})(\d{6})(?:[?][^>\s]*)?")
 _GREET = re.compile(r"^\s*(hi|hello|hey|在吗|你在吗|help|帮助|怎么用)\s*$", re.I)
+_SLACK_HUMAN_ID = re.compile(r"^[UW][A-Z0-9]+$")
 
 
 def _team_id(event: dict, body: dict = None) -> str:
@@ -283,5 +284,10 @@ def handle_message(event, body, client, logger):
 if __name__ == "__main__":
     if not OWNER_USER_ID:
         raise RuntimeError("请先设置 COPILOT_OWNER_USER_ID=<你的 Slack member ID>,否则私人 copilot 无法确定服务对象。")
+    if not _SLACK_HUMAN_ID.fullmatch(OWNER_USER_ID):
+        raise RuntimeError(
+            "COPILOT_OWNER_USER_ID 必须是 Slack member ID,不是显示名。"
+            "请在 Slack 个人资料里点 More -> Copy member ID,填入类似 U0B8Q1X1SF8 的值。"
+        )
     print("Private Seminar Copilot 已启动(Socket Mode)。Ctrl-C 退出。", flush=True)
     SocketModeHandler(app, os.environ["COPILOT_SLACK_APP_TOKEN"]).start()

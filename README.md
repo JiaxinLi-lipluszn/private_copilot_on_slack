@@ -109,6 +109,9 @@ COPILOT_SLACK_BOT_TOKEN=xoxb-...
 ## Bind the Owner
 
 In Slack, open the owner's profile, click **More**, then **Copy member ID**.
+Use the copied Slack member ID, not the display name. It usually looks like
+`U0B8Q1X1SF8` or `W...`; values such as `LiGaZn` are display names and will not
+match Slack events.
 
 Add it to `.env`:
 
